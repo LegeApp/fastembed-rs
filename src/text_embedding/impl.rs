@@ -30,6 +30,41 @@ use super::{
     output, InitOptionsUserDefined, TextEmbedding, UserDefinedEmbeddingModel, DEFAULT_BATCH_SIZE,
 };
 
+fn session_builder_with_execution_providers(
+    execution_providers: Vec<ort::execution_providers::ExecutionProviderDispatch>,
+) -> Result<ort::session::builder::SessionBuilder> {
+    if std::env::var_os("SINORAG_USE_TENSORRT_PLUGIN_EP").is_some() {
+        let env = ort::environment::Environment::current()?;
+        let devices = env
+            .devices()
+            .filter(|device| {
+                device
+                    .ep()
+                    .map(|ep| ep.eq_ignore_ascii_case("TensorRTEp"))
+                    .unwrap_or(false)
+            })
+            .collect::<Vec<_>>();
+        if devices.is_empty() {
+            anyhow::bail!("TensorRT plugin EP was requested, but ORT reported no TensorRTEp devices");
+        }
+
+        let options = std::env::vars()
+            .filter_map(|(key, value)| {
+                key.strip_prefix("SINORAG_TENSORRT_EP_OPTION_")
+                    .map(|option| (format!("TensorRTEp.{}", option.to_ascii_lowercase()), value))
+            })
+            .collect::<Vec<_>>();
+
+        return Session::builder()?
+            .with_devices(devices, Some(&options))
+            .map_err(TextEmbedding::builder_error);
+    }
+
+    Session::builder()?
+        .with_execution_providers(execution_providers)
+        .map_err(TextEmbedding::builder_error)
+}
+
 impl TextEmbedding {
     fn builder_error(err: ort::Error<ort::session::builder::SessionBuilder>) -> anyhow::Error {
         anyhow::Error::msg(err.to_string())
@@ -81,9 +116,7 @@ impl TextEmbedding {
         #[cfg(not(feature = "directml"))]
         let has_directml = false;
 
-        let mut builder = Session::builder()?
-            .with_execution_providers(execution_providers)
-            .map_err(Self::builder_error)?
+        let mut builder = session_builder_with_execution_providers(execution_providers)?
             .with_optimization_level(GraphOptimizationLevel::Level3)
             .map_err(Self::builder_error)?
             .with_intra_threads(threads)
@@ -131,9 +164,7 @@ impl TextEmbedding {
         let has_directml = false;
 
         let session = {
-            let mut session_builder = Session::builder()?
-                .with_execution_providers(execution_providers)
-                .map_err(Self::builder_error)?
+            let mut session_builder = session_builder_with_execution_providers(execution_providers)?
                 .with_optimization_level(GraphOptimizationLevel::Level3)
                 .map_err(Self::builder_error)?
                 .with_intra_threads(threads)
