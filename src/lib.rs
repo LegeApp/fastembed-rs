@@ -59,23 +59,32 @@ mod common;
 mod image_embedding;
 mod init;
 mod models;
+#[cfg(feature = "ort-backend")]
 pub mod output;
 mod pooling;
+#[cfg(feature = "ort-backend")]
 mod reranking;
+#[cfg(feature = "ort-backend")]
 mod sparse_text_embedding;
+#[cfg(feature = "tensorrt")]
+mod tensorrt;
 mod text_embedding;
 
-pub use ort::execution_providers::ExecutionProviderDispatch;
-
 pub use crate::common::{get_cache_dir, Embedding, Error, SparseEmbedding, TokenizerFiles};
-pub use crate::models::{
-    model_info::ModelInfo, model_info::RerankerModelInfo, quantization::QuantizationMode,
-};
+pub use crate::models::{model_info::ModelInfo, quantization::QuantizationMode};
+#[cfg(feature = "ort-backend")]
+pub use crate::models::model_info::RerankerModelInfo;
+#[cfg(feature = "ort-backend")]
 pub use crate::output::{EmbeddingOutput, OutputKey, OutputPrecedence, SingleBatchOutput};
+#[cfg(not(feature = "ort-backend"))]
+pub use crate::text_embedding::{EmbeddingOutput, OutputKey};
 pub use crate::pooling::Pooling;
 
 // For all Embedding
-pub use crate::init::{InitOptions as BaseInitOptions, InitOptionsWithLength};
+pub use crate::init::{
+    EmbeddingBackendConfig, ExecutionProviderDispatch, InitOptions as BaseInitOptions,
+    InitOptionsWithLength,
+};
 pub use crate::models::ModelTrait;
 
 // For Text Embedding
@@ -87,7 +96,9 @@ pub use crate::text_embedding::{
 };
 
 // For Sparse Text Embedding
+#[cfg(feature = "ort-backend")]
 pub use crate::models::sparse::SparseModel;
+#[cfg(feature = "ort-backend")]
 pub use crate::sparse_text_embedding::{
     SparseInitOptions, SparseTextEmbedding, UserDefinedSparseModel,
 };
@@ -100,7 +111,9 @@ pub use crate::image_embedding::{
 pub use crate::models::image_embedding::ImageEmbeddingModel;
 
 // For Reranking
+#[cfg(feature = "ort-backend")]
 pub use crate::models::reranking::RerankerModel;
+#[cfg(feature = "ort-backend")]
 pub use crate::reranking::{
     OnnxSource, RerankInitOptions, RerankInitOptionsUserDefined, RerankResult, TextRerank,
     UserDefinedRerankingModel,

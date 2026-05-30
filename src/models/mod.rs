@@ -3,7 +3,9 @@ use crate::ModelInfo;
 pub mod image_embedding;
 pub mod model_info;
 pub mod quantization;
+#[cfg(feature = "ort-backend")]
 pub mod reranking;
+#[cfg(feature = "ort-backend")]
 pub mod sparse;
 pub mod text_embedding;
 

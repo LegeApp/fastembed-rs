@@ -43,6 +43,7 @@ impl ImageEmbedding {
             execution_providers,
             cache_dir,
             show_download_progress,
+            ..
         } = options;
 
         let threads = available_parallelism()?.get();

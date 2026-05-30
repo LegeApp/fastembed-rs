@@ -26,9 +26,11 @@ anyhow = { version = "1" }
 hf-hub = { version = "0.5.0", default-features = false, optional = true }
 image = { version = "0.25.10", optional = true }
 ndarray = { version = "0.17.2", default-features = false }
-ort = { version = "=2.0.0-rc.12", default-features = false, features = [
+ort = { version = "=2.0.0-rc.12", optional = true, default-features = false, features = [
   "ndarray", "std", "api-24"
 ] }
+tract-onnx = { version = "0.21", optional = true }
+cxx = { version = "1.0.194", optional = true }
 safetensors = { version = "0.7.0" }
 serde_json = { version = "1" }
 serde = { version = "1", features = ["derive"] }
@@ -40,24 +42,27 @@ intel-mkl-src = { version = "0.8.1", optional = true }
 accelerate-src = { version = "0.3.2", optional = true }
 
 [features]
-default = ["ort-download-binaries-native-tls", "hf-hub-native-tls", "image-models"]
+default = ["hf-hub-native-tls", "tensorrt"]
 
 hf-hub = ["dep:hf-hub", "hf-hub?/ureq"]
 hf-hub-native-tls = ["hf-hub", "hf-hub?/native-tls"]
 hf-hub-rustls-tls = ["hf-hub", "hf-hub?/rustls-tls"]
 
+ort-backend = ["dep:ort"]
 ort-download-binaries = ["ort-download-binaries-native-tls"]
-ort-download-binaries-native-tls = ["ort/download-binaries", "ort/tls-native"]
-ort-download-binaries-rustls-tls = ["ort/download-binaries", "ort/tls-rustls"]
-ort-load-dynamic = ["ort/load-dynamic"]
+ort-download-binaries-native-tls = ["ort-backend", "ort/download-binaries", "ort/tls-native"]
+ort-download-binaries-rustls-tls = ["ort-backend", "ort/download-binaries", "ort/tls-rustls"]
+ort-load-dynamic = ["ort-backend", "ort/load-dynamic"]
+tensorrt = ["dep:cxx"]
+tract = ["dep:tract-onnx"]
 
 qwen3 = ["dep:candle-core", "dep:candle-nn", "dep:image", "hf-hub"]
 nomic-v2-moe = ["dep:candle-core", "dep:candle-nn", "hf-hub"]
 
-image-models = ["dep:image"]
+image-models = ["ort-backend", "dep:image"]
 mkl = ["qwen3", "nomic-v2-moe", "dep:intel-mkl-src", "candle-nn/mkl", "candle-core/mkl"]
 accelerate = ["qwen3", "nomic-v2-moe", "dep:accelerate-src", "candle-core/accelerate", "candle-nn/accelerate"]
-directml = ["ort/directml"]
+directml = ["ort-backend", "ort/directml"]
 cuda = ["qwen3", "nomic-v2-moe", "candle-core/cuda", "candle-nn/cuda"]
 cudnn = ["qwen3", "nomic-v2-moe", "candle-core/cudnn", "candle-nn/cudnn", "cuda"]
 metal = ["qwen3", "nomic-v2-moe", "candle-core/metal", "candle-nn/metal"]
@@ -68,3 +73,6 @@ optimum-cli = []
 
 # For compatibility recommend using hf-hub-native-tls
 online = ["hf-hub-native-tls"]
+
+[build-dependencies]
+cxx-build = "1.0.194"

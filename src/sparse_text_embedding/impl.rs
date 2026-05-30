@@ -46,6 +46,7 @@ impl SparseTextEmbedding {
             cache_dir,
             show_download_progress,
             execution_providers,
+            ..
         } = options;
 
         let threads = available_parallelism()?.get();

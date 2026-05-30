@@ -3,12 +3,21 @@
 
 use crate::{
     common::TokenizerFiles,
-    init::{HasMaxLength, InitOptionsWithLength},
+    init::{EmbeddingBackendConfig, HasMaxLength, InitOptionsWithLength},
     pooling::Pooling,
-    EmbeddingModel, OutputKey, QuantizationMode,
+    EmbeddingModel, QuantizationMode,
 };
-use ort::{execution_providers::ExecutionProviderDispatch, session::Session};
+use std::path::PathBuf;
 use tokenizers::Tokenizer;
+
+#[cfg(feature = "ort-backend")]
+use ort::{execution_providers::ExecutionProviderDispatch, session::Session};
+#[cfg(not(feature = "ort-backend"))]
+use crate::ExecutionProviderDispatch;
+#[cfg(feature = "ort-backend")]
+use crate::OutputKey;
+#[cfg(not(feature = "ort-backend"))]
+use super::OutputKey;
 
 use super::DEFAULT_MAX_LENGTH;
 
@@ -26,7 +35,9 @@ pub type TextInitOptions = InitOptionsWithLength<EmbeddingModel>;
 #[non_exhaustive]
 pub struct InitOptionsUserDefined {
     pub execution_providers: Vec<ExecutionProviderDispatch>,
+    pub disable_cpu_fallback: bool,
     pub max_length: usize,
+    pub backend: EmbeddingBackendConfig,
 }
 
 impl InitOptionsUserDefined {
@@ -44,8 +55,18 @@ impl InitOptionsUserDefined {
         self
     }
 
+    pub fn with_disable_cpu_fallback(mut self, disable_cpu_fallback: bool) -> Self {
+        self.disable_cpu_fallback = disable_cpu_fallback;
+        self
+    }
+
     pub fn with_max_length(mut self, max_length: usize) -> Self {
         self.max_length = max_length;
+        self
+    }
+
+    pub fn with_backend(mut self, backend: EmbeddingBackendConfig) -> Self {
+        self.backend = backend;
         self
     }
 }
@@ -54,7 +75,9 @@ impl Default for InitOptionsUserDefined {
     fn default() -> Self {
         Self {
             execution_providers: Default::default(),
+            disable_cpu_fallback: false,
             max_length: DEFAULT_MAX_LENGTH,
+            backend: Default::default(),
         }
     }
 }
@@ -66,7 +89,9 @@ impl From<TextInitOptions> for InitOptionsUserDefined {
     fn from(options: TextInitOptions) -> Self {
         InitOptionsUserDefined {
             execution_providers: options.execution_providers,
+            disable_cpu_fallback: options.disable_cpu_fallback,
             max_length: options.max_length,
+            backend: options.backend,
         }
     }
 }
@@ -127,8 +152,69 @@ impl UserDefinedEmbeddingModel {
 pub struct TextEmbedding {
     pub tokenizer: Tokenizer,
     pub(crate) pooling: Option<Pooling>,
+    #[allow(dead_code)]
+    pub(crate) backend: TextEmbeddingBackend,
+    #[cfg(feature = "ort-backend")]
     pub(crate) session: Session,
+    #[allow(dead_code)]
     pub(crate) need_token_type_ids: bool,
+    #[allow(dead_code)]
     pub(crate) quantization: QuantizationMode,
+    #[allow(dead_code)]
     pub(crate) output_key: Option<OutputKey>,
+}
+
+#[allow(dead_code)]
+pub(crate) enum TextEmbeddingBackend {
+    #[cfg(feature = "tensorrt")]
+    TensorRt {
+        engine_path: PathBuf,
+        engine: crate::tensorrt::HostEmbeddingEngine,
+    },
+    #[cfg(not(feature = "tensorrt"))]
+    TensorRt { engine_path: PathBuf },
+    Cpu { model_path: PathBuf },
+    #[cfg(feature = "ort-backend")]
+    Ort,
+}
+
+impl TextEmbeddingBackend {
+    #[allow(dead_code)]
+    pub(crate) fn from_config(
+        config: EmbeddingBackendConfig,
+        model_path: PathBuf,
+    ) -> anyhow::Result<Self> {
+        match config {
+            EmbeddingBackendConfig::TensorRt {
+                engine_dir,
+                engine_path,
+            } => {
+                let engine_path = engine_path
+                    .or_else(|| engine_dir.map(|dir| dir.join("engine.plan")))
+                    .unwrap_or_else(|| model_path.with_extension("engine"));
+                #[cfg(feature = "tensorrt")]
+                {
+                    let engine =
+                        crate::tensorrt::HostEmbeddingEngine::new(&engine_path).map_err(|e| {
+                            anyhow::anyhow!(
+                                "failed to load TensorRT engine {}: {}",
+                                engine_path.display(),
+                                e
+                            )
+                        })?;
+                    Ok(Self::TensorRt {
+                        engine_path,
+                        engine,
+                    })
+                }
+                #[cfg(not(feature = "tensorrt"))]
+                {
+                    Ok(Self::TensorRt { engine_path })
+                }
+            }
+            EmbeddingBackendConfig::Cpu => Ok(Self::Cpu { model_path }),
+            #[cfg(feature = "ort-backend")]
+            EmbeddingBackendConfig::Ort => Ok(Self::Ort),
+        }
+    }
 }
